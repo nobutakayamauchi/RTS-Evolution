@@ -164,6 +164,30 @@
     },
     {
       "if": {
+        "properties": {
+          "artifact_type": {
+            "enum": [
+              "RESULT", "EVIDENCE", "GATE_RESULT", "RETRY_REQUEST", "TRACE",
+              "LEARNING_CANDIDATE", "FREEZE_RECORD"
+            ]
+          }
+        },
+        "required": ["artifact_type"]
+      },
+      "then": {
+        "properties": {
+          "authority": {
+            "properties": {
+              "execution": {"const": false},
+              "external_action": {"const": false},
+              "promotion": {"const": false}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
         "anyOf": [
           {"properties": {"authority": {"properties": {"execution": {"const": true}}, "required": ["execution"]}}},
           {"properties": {"authority": {"properties": {"external_action": {"const": true}}, "required": ["external_action"]}}},
@@ -171,12 +195,18 @@
         ]
       },
       "then": {
+        "required": ["intended_consumers"],
         "properties": {
           "authorization_refs": {"minItems": 1},
           "producer": {
             "required": ["runtime_identity"],
             "properties": {"runtime_identity": {"type": "object", "minProperties": 1}}
-          }
+          },
+          "subject": {
+            "required": ["target_identity"],
+            "properties": {"target_identity": {"$ref": "#/$defs/targetIdentity"}}
+          },
+          "intended_consumers": {"minItems": 1}
         }
       }
     },
@@ -185,13 +215,6 @@
       "then": {
         "properties": {
           "state": {"enum": ["PROPOSED", "READY", "UNKNOWN", "CONFLICT"]},
-          "authority": {
-            "properties": {
-              "execution": {"const": false},
-              "external_action": {"const": false},
-              "promotion": {"const": false}
-            }
-          },
           "subject": {"properties": {"parent_artifact_ids": {"minItems": 1}}},
           "evidence_refs": {"minItems": 1},
           "payload": {
@@ -221,13 +244,6 @@
       "then": {
         "properties": {
           "state": {"const": "FINAL"},
-          "authority": {
-            "properties": {
-              "execution": {"const": false},
-              "external_action": {"const": false},
-              "promotion": {"const": false}
-            }
-          },
           "subject": {"properties": {"parent_artifact_ids": {"minItems": 2}}},
           "evidence_refs": {"minItems": 1},
           "payload": {
