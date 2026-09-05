@@ -5,17 +5,8 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "contract_version",
-    "artifact_type",
-    "artifact_id",
-    "created_at",
-    "producer",
-    "subject",
-    "state",
-    "evidence_refs",
-    "authority",
-    "authorization_refs",
-    "payload"
+    "contract_version", "artifact_type", "artifact_id", "created_at", "producer",
+    "subject", "state", "evidence_refs", "authority", "authorization_refs", "payload"
   ],
   "properties": {
     "contract_version": {"const": "rts-interop/v1"},
@@ -113,10 +104,7 @@
       }
     },
     "targetIdentityOrNull": {
-      "oneOf": [
-        {"type": "null"},
-        {"$ref": "#/$defs/targetIdentity"}
-      ]
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/targetIdentity"}]
     },
     "authorizationRef": {
       "type": "object",
@@ -127,14 +115,16 @@
         "ref": {"type": "string", "minLength": 1},
         "issuer": {"type": "string", "minLength": 1},
         "scope": {
-          "type": "array",
-          "minItems": 1,
-          "items": {"type": "string", "minLength": 1},
-          "uniqueItems": true
+          "type": "array", "minItems": 1,
+          "items": {"type": "string", "minLength": 1}, "uniqueItems": true
         },
         "target_sha256": {"$ref": "#/$defs/sha256"},
         "issuer_identity": {"type": ["object", "null"], "additionalProperties": true}
       }
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
     }
   },
   "allOf": [
@@ -194,16 +184,48 @@
       }
     },
     {
+      "if": {"properties": {"artifact_type": {"const": "LEARNING_CANDIDATE"}}, "required": ["artifact_type"]},
+      "then": {
+        "properties": {
+          "state": {"enum": ["PROPOSED", "READY", "UNKNOWN", "CONFLICT"]},
+          "authority": {
+            "properties": {
+              "execution": {"const": false},
+              "external_action": {"const": false},
+              "promotion": {"const": false}
+            }
+          },
+          "subject": {"properties": {"parent_artifact_ids": {"minItems": 1}}},
+          "evidence_refs": {"minItems": 1},
+          "payload": {
+            "required": [
+              "claim", "original_outcome", "completion_conditions", "supporting_evidence_refs",
+              "counter_evidence_refs", "applicability", "counterconditions", "unresolved",
+              "defect_history_refs", "source_trace_refs"
+            ],
+            "properties": {
+              "claim": {"type": "string", "minLength": 1},
+              "original_outcome": {"type": "string", "minLength": 1},
+              "completion_conditions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "supporting_evidence_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "counter_evidence_refs": {"$ref": "#/$defs/stringArray"},
+              "applicability": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "counterconditions": {"$ref": "#/$defs/stringArray"},
+              "unresolved": {"$ref": "#/$defs/stringArray"},
+              "defect_history_refs": {"$ref": "#/$defs/stringArray"},
+              "source_trace_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+            }
+          }
+        }
+      }
+    },
+    {
       "if": {"properties": {"artifact_type": {"const": "FREEZE_RECORD"}}, "required": ["artifact_type"]},
       "then": {
         "properties": {
           "state": {"const": "FINAL"},
-          "authority": {
-            "properties": {"promotion": {"const": false}}
-          },
-          "subject": {
-            "properties": {"parent_artifact_ids": {"minItems": 2}}
-          },
+          "authority": {"properties": {"promotion": {"const": false}}},
+          "subject": {"properties": {"parent_artifact_ids": {"minItems": 2}}},
           "evidence_refs": {"minItems": 1},
           "payload": {
             "required": [
@@ -215,7 +237,7 @@
               "promotion_decision_ref": {"type": "string", "minLength": 1},
               "provenance_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
               "applicability": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-              "counterconditions": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "counterconditions": {"$ref": "#/$defs/stringArray"},
               "authority_scope": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
               "reassessment_conditions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
             }
