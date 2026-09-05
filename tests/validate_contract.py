@@ -4,113 +4,65 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_PATH = ROOT / "contracts" / "interop-envelope-v1.schema.json"
-PROSE_PATH = ROOT / "contracts" / "INTEROP_CONTRACT_V1.md"
+SCHEMA = json.loads((ROOT / "contracts" / "interop-envelope-v1.schema.json").read_text(encoding="utf-8"))
+PROSE = (ROOT / "contracts" / "INTEROP_CONTRACT_V1.md").read_text(encoding="utf-8")
 
 
-def artifact_rule(schema: dict, artifact_type: str) -> dict:
-    for rule in schema["allOf"]:
-        condition = rule.get("if", {})
-        const = condition.get("properties", {}).get("artifact_type", {}).get("const")
+def rule_for(artifact_type: str) -> dict:
+    for rule in SCHEMA["allOf"]:
+        const = rule.get("if", {}).get("properties", {}).get("artifact_type", {}).get("const")
         if const == artifact_type:
             return rule["then"]
-    raise AssertionError(f"missing schema rule for {artifact_type}")
-
-
-def authority_guard(schema: dict) -> dict:
-    for rule in schema["allOf"]:
-        condition = rule.get("if", {})
-        if "anyOf" in condition:
-            then = rule.get("then", {})
-            props = then.get("properties", {})
-            if "authorization_refs" in props and "producer" in props:
-                return then
-    raise AssertionError("missing authority runtime/auth-reference guard")
-
-
-def non_authorizing_types(schema: dict) -> set[str]:
-    for rule in schema["allOf"]:
-        artifact = rule.get("if", {}).get("properties", {}).get("artifact_type", {})
-        enum = artifact.get("enum")
-        if enum and "TRACE" in enum and "RESULT" in enum:
-            authority = rule.get("then", {}).get("properties", {}).get("authority", {})
-            props = authority.get("properties", {})
-            if props and all(props[key].get("const") is False for key in ("execution", "external_action", "promotion")):
-                return set(enum)
-    raise AssertionError("missing non-authorizing artifact guard")
+    raise AssertionError(f"missing rule for {artifact_type}")
 
 
 def main() -> None:
-    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-    prose = PROSE_PATH.read_text(encoding="utf-8")
+    assert SCHEMA["properties"]["contract_version"]["const"] == "rts-interop/v1"
+    assert "non-authorizing" in SCHEMA["$comment"]
 
-    assert schema["$schema"].endswith("2020-12/schema")
-    assert schema["properties"]["contract_version"]["const"] == "rts-interop/v1"
-    assert "structural only" in schema.get("$comment", "")
+    authority = SCHEMA["properties"]["authority"]["properties"]
+    assert all(authority[key]["const"] is False for key in ("execution", "external_action", "promotion"))
+    assert SCHEMA["properties"]["authorization_refs"]["maxItems"] == 0
 
-    auth_ref = schema["$defs"]["authorizationRef"]
-    assert "issuer_identity" in auth_ref["required"]
-    issuer_identity = auth_ref["properties"]["issuer_identity"]
-    assert issuer_identity["type"] == "object"
-    assert issuer_identity["minProperties"] == 1
-
-    guard = authority_guard(schema)
-    assert "intended_consumers" in guard["required"]
-    guard_props = guard["properties"]
-    assert guard_props["authorization_refs"]["minItems"] == 1
-    assert guard_props["intended_consumers"]["minItems"] == 1
-    assert "target_identity" in guard_props["subject"]["required"]
-    runtime_identity = guard_props["producer"]["properties"]["runtime_identity"]
-    assert runtime_identity["type"] == "object"
-    assert runtime_identity["minProperties"] == 1
-
-    non_auth = non_authorizing_types(schema)
+    unit = rule_for("UNIT")["properties"]
+    assert unit["intended_consumers"]["minItems"] == 1
+    assert {"unit_id", "target_identity"} <= set(unit["subject"]["required"])
     assert {
-        "RESULT",
-        "EVIDENCE",
-        "GATE_RESULT",
-        "RETRY_REQUEST",
-        "TRACE",
-        "LEARNING_CANDIDATE",
-        "FREEZE_RECORD",
-    } <= non_auth
+        "issuance_id", "outcome", "completion_conditions", "scope", "consequence_class",
+        "source_identity", "task", "target_sha256",
+    } <= set(unit["payload"]["required"])
 
-    learning = artifact_rule(schema, "LEARNING_CANDIDATE")["properties"]
-    learning_required = set(learning["payload"]["required"])
+    approval = rule_for("APPROVAL")["properties"]
+    assert approval["evidence_refs"]["minItems"] == 1
+    assert {"decision", "approved_by_asserted", "approval_ref"} <= set(approval["payload"]["required"])
+
+    promotion = rule_for("PROMOTION_DECISION")["properties"]
+    assert promotion["evidence_refs"]["minItems"] == 1
+    assert {"decided_by_asserted", "decision_ref"} <= set(promotion["payload"]["required"])
+
+    learning = rule_for("LEARNING_CANDIDATE")["properties"]["payload"]["required"]
     assert {
-        "claim",
-        "original_outcome",
-        "completion_conditions",
-        "supporting_evidence_refs",
-        "counter_evidence_refs",
-        "applicability",
-        "counterconditions",
-        "unresolved",
-        "defect_history_refs",
-        "source_trace_refs",
-    } <= learning_required
+        "claim", "original_outcome", "completion_conditions", "supporting_evidence_refs",
+        "counter_evidence_refs", "applicability", "counterconditions", "unresolved",
+        "defect_history_refs", "source_trace_refs",
+    } <= set(learning)
 
-    freeze = artifact_rule(schema, "FREEZE_RECORD")["properties"]
-    freeze_required = set(freeze["payload"]["required"])
+    freeze = rule_for("FREEZE_RECORD")["properties"]["payload"]["required"]
     assert {
-        "claim",
-        "promotion_decision_ref",
-        "provenance_refs",
-        "applicability",
-        "counterconditions",
-        "authority_scope",
-        "reassessment_conditions",
-    } <= freeze_required
+        "claim", "promotion_decision_ref", "provenance_refs", "applicability",
+        "counterconditions", "authority_scope", "reassessment_conditions",
+    } <= set(freeze)
 
-    required_prose = (
-        "ENVELOPE SAYS AUTHORIZED != AUTHORITY VERIFIED",
+    for phrase in (
+        "RTS-INTEROP/V1 DOES NOT CARRY AUTHORITY",
+        "UNIT EXISTS != EXECUTION AUTHORITY",
+        "RESULT FINAL != SUPPORTED EVIDENCE",
+        "No trusted runtime boundary => BLOCKED",
+        "APPROVE != EXECUTION AUTHORITY",
         "PROMOTE != PROMOTION AUTHORITY",
-        "No trusted verifier => BLOCKED",
-        "RESULT target hash matches -> producer authenticated",
         "content-addressed ref string exists -> payload reconstructable",
-    )
-    for phrase in required_prose:
-        assert phrase in prose, f"missing contract invariant: {phrase}"
+    ):
+        assert phrase in PROSE, f"missing invariant: {phrase}"
 
 
 if __name__ == "__main__":
