@@ -99,6 +99,8 @@ A `GATE_RESULT` requires a `verdict`.
 
 `PASS != AUTHORITY`
 
+A generic system-wide gate service is not required. Prefer deterministic/product-local checks owned by the component that can actually falsify the relevant completion condition. Use Ultimate Loop destructive evaluation for material semantic changes rather than forcing every domain through one proof repository.
+
 ### 5. RETRY_REQUEST
 A request to redo only the failed/bounded unit or to re-plan when the failure invalidates the current unit shape.
 
@@ -130,6 +132,14 @@ Minimum useful trace separates:
 - result;
 - gate/verdict;
 - external outcome when applicable.
+
+Observing an artifact does not validate the truth of the artifact's payload. In particular:
+
+```text
+RESULT OBSERVED != COMPLETION PROVED
+PROMOTION DECISION OBSERVED != FREEZE RECORD EXISTS
+PASS OBSERVED != AUTHORITY GRANTED
+```
 
 ### 8. LEARNING_CANDIDATE
 A proposed reusable lesson/invariant derived from one or more traces/evidence sets.
@@ -305,25 +315,32 @@ Connector Hub is an initial connectivity candidate, not a governance authority.
 ### product/worker repositories
 
 ```text
-PRODUCES: RESULT, EVIDENCE
+PRODUCES: RESULT, EVIDENCE, GATE_RESULT (when the product owns a falsifiable gate)
 CONSUMES: UNIT, APPROVAL (when consequence requires it)
 ```
 
 ### proof-ops
 
+`proof-ops` is not the universal RTS gate. Its current repository contract is specifically B2B public-evidence research/proof/outreach preparation.
+
 ```text
-PRODUCES: EVIDENCE, GATE_RESULT
-CONSUMES: RESULT, EVIDENCE
+DOMAIN: sales / outreach preparation
+PRODUCES: RESULT, EVIDENCE (sales-domain proof packets)
+CONSUMES: UNIT, public-source EVIDENCE
+EXTERNAL OUTREACH: requires explicit human approval
 ```
+
+Do not route unrelated runtime, deployment, learning, or system-wide verification through proof-ops merely because its name contains “proof”.
 
 ### TRACE
 
 ```text
 PRODUCES: TRACE
-CONSUMES: UNIT, RESULT, EVIDENCE, GATE_RESULT, APPROVAL
+CONSUMES: UNIT, RESULT, EVIDENCE, GATE_RESULT, RETRY_REQUEST, APPROVAL,
+          TRACE, LEARNING_CANDIDATE, PROMOTION_DECISION, FREEZE_RECORD
 ```
 
-TRACE remains an observation/evidence specialist, not governance.
+TRACE remains an observation/evidence specialist, not governance. Its first interop adapter produces source-record candidates and deterministic chain fields but does not silently append to an existing SEALED run; append/reseal remains the archive owner's responsibility.
 
 ### Ultimate-Loop
 
@@ -360,17 +377,31 @@ The physical store may be Git/GitHub, an Obsidian-linked governed store, or anot
 
 Obsidian is capture/staging, not automatic Canon.
 
+Two routes exist because private personal knowledge and public-safe proposals have different leakage boundaries.
+
+### Private route
+
 ```text
-RAW NOTE
-  -> PROPOSAL_ONLY
-  -> sensitivity/privacy gate
-  -> normalization
-  -> bounded EVIDENCE/CANDIDATE
-  -> challenge/counter-evidence
-  -> LEARNING_CANDIDATE
+SELECTED LOCAL NOTE
+  -> local PROPOSAL_ONLY candidate
+  -> sensitivity/credential gate
+  -> separated review / counter-evidence as required
   -> PROMOTION_DECISION
-  -> FREEZE_RECORD
+  -> local FREEZE_RECORD
 ```
+
+Personal/internal data may remain local and freeze locally. Credential/secret-like material should not be duplicated into durable knowledge artifacts.
+
+### Public-safe proposal route
+
+```text
+HUMAN-AUTHORED PUBLIC-SAFE NOTE/PROPOSAL
+  -> proposal-only ingress
+  -> public safety validation
+  -> reviewable implementation/record proposal
+```
+
+Do not send private Vault bodies through a public GitHub Issue path.
 
 Forbidden shortcut:
 
