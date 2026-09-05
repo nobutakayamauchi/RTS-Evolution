@@ -8,8 +8,10 @@
     "contract_version",
     "artifact_type",
     "artifact_id",
+    "created_at",
     "producer",
-    "status",
+    "subject",
+    "state",
     "evidence_refs",
     "authority",
     "payload"
@@ -64,32 +66,63 @@
     "subject": {
       "type": "object",
       "additionalProperties": false,
+      "required": ["parent_artifact_ids"],
       "properties": {
         "unit_id": {
           "type": ["string", "null"]
         },
+        "target_artifact_id": {
+          "type": ["string", "null"]
+        },
+        "target_identity": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        },
         "parent_artifact_ids": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "uniqueItems": true
         }
       }
     },
-    "status": {
+    "intended_consumers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "state": {
       "enum": [
+        "PROPOSED",
         "READY",
+        "FINAL",
+        "BLOCKED",
+        "UNKNOWN",
+        "CONFLICT"
+      ]
+    },
+    "verdict": {
+      "enum": [
         "PASS",
         "FAIL",
         "BLOCKED",
         "UNKNOWN",
         "CONFLICT",
-        "HUMAN_REQUIRED",
-        "ACCEPTED",
-        "REJECTED",
-        "DEFERRED",
-        "QUARANTINED"
+        "HUMAN_REQUIRED"
+      ]
+    },
+    "disposition": {
+      "enum": [
+        "PROMOTE",
+        "REJECT",
+        "DEFER",
+        "QUARANTINE",
+        "NEEDS_MORE_EVIDENCE"
       ]
     },
     "evidence_refs": {
@@ -102,8 +135,25 @@
           },
           {
             "type": "object",
-            "minProperties": 1,
-            "additionalProperties": true
+            "additionalProperties": false,
+            "required": ["kind", "ref"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ref": {
+                "type": "string",
+                "minLength": 1
+              },
+              "digest": {
+                "type": ["string", "null"]
+              },
+              "identity": {
+                "type": ["object", "null"],
+                "additionalProperties": true
+              }
+            }
           }
         ]
       }
@@ -128,5 +178,73 @@
       "type": "object",
       "additionalProperties": true
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "artifact_type": {"const": "GATE_RESULT"}
+        },
+        "required": ["artifact_type"]
+      },
+      "then": {
+        "required": ["verdict"]
+      },
+      "else": {
+        "not": {
+          "required": ["verdict"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "artifact_type": {"const": "PROMOTION_DECISION"}
+        },
+        "required": ["artifact_type"]
+      },
+      "then": {
+        "required": ["disposition"]
+      },
+      "else": {
+        "not": {
+          "required": ["disposition"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "artifact_type": {"const": "APPROVAL"}
+        },
+        "required": ["artifact_type"]
+      },
+      "then": {
+        "properties": {
+          "subject": {
+            "anyOf": [
+              {
+                "required": ["target_artifact_id"],
+                "properties": {
+                  "target_artifact_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              {
+                "required": ["target_identity"],
+                "properties": {
+                  "target_identity": {
+                    "type": "object",
+                    "minProperties": 1
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
 }
