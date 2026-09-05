@@ -8,23 +8,21 @@ This contract is the smallest common language for connecting independent RTS eco
 
 **Edges are canonical; internals remain replaceable.**
 
-A repository keeps its own models, storage, runtime and workflow. The common envelope is required only when responsibility crosses a repository boundary.
+A repository keeps its own models, storage, runtime and workflow. The common envelope applies only when responsibility crosses a repository boundary.
 
 This contract is not an event bus, global controller, governance kernel, database, or replacement for product-local schemas.
 
 ## Artifact vocabulary
-
-Cross-repository work may use these artifact types:
 
 - `UNIT` — bounded requested work;
 - `RESULT` — bounded worker/tool output;
 - `EVIDENCE` — observable support for a claim;
 - `GATE_RESULT` — falsifiable/governed evaluation;
 - `RETRY_REQUEST` — bounded correction/re-plan request;
-- `APPROVAL` — explicit authorization for an exact consequence;
+- `APPROVAL` — exact-target approval **decision record**; it may remain non-authorizing until trusted verification;
 - `TRACE` — reconstructable observation record/candidate;
 - `LEARNING_CANDIDATE` — proposed reusable lesson, not Canon;
-- `PROMOTION_DECISION` — governed disposition of an exact candidate;
+- `PROMOTION_DECISION` — exact-target promotion **decision record**; disposition is not authority;
 - `FREEZE_RECORD` — promoted reusable knowledge/state with provenance.
 
 ## Independent axes
@@ -47,9 +45,9 @@ Only `PROMOTION_DECISION` carries:
 
 `PROMOTE | REJECT | DEFER | QUARANTINE | NEEDS_MORE_EVIDENCE | UNKNOWN | CONFLICT`
 
-### Authority
+### Authority vector
 
-Every envelope carries explicit booleans:
+Every envelope carries:
 
 ```json
 {
@@ -59,13 +57,23 @@ Every envelope carries explicit booleans:
 }
 ```
 
-A true authority bit is never sufficient by itself. It must be backed by a matching `authorization_refs` entry.
+The vector is a **producer assertion**, not cross-repository proof.
+
+Even when an authority bit is true, a consumer must independently establish all applicable identity and authority facts before acting:
+
+1. authenticate the producer/repository through the transport or equivalent trusted boundary;
+2. authenticate the producer runtime/deployment identity;
+3. recompute/verify the exact target identity or digest when applicable;
+4. resolve and verify the referenced policy/human/promotion authority source;
+5. verify required scope and consumer binding.
+
+`ENVELOPE SAYS AUTHORIZED != AUTHORITY VERIFIED`
+
+A consumer that cannot perform the required verification must fail closed or preserve `UNKNOWN`.
 
 ## Immutable target identity
 
-Authority-bearing decisions must bind to immutable content identity, not only a local name or ID.
-
-Required target shape:
+Authority-bearing work and consequential decisions bind to immutable content identity, not only a local name or ID.
 
 ```json
 {
@@ -76,15 +84,13 @@ Required target shape:
 }
 ```
 
-The digest represents the exact bounded material being authorized or promoted.
-
-If content changes, the digest changes and the old authorization does not transfer.
+If content changes, the digest changes and old evidence/approval/authorization does not transfer.
 
 `SAME ID != SAME CANDIDATE`
 
 ## Authorization references
 
-When any authority bit is true, at least one explicit authorization reference is required.
+An `authorization_refs` entry is a structured pointer/assertion:
 
 ```json
 {
@@ -93,7 +99,7 @@ When any authority bit is true, at least one explicit authorization reference is
   "issuer": "nobutakayamauchi/right-arm",
   "scope": ["execution:bounded"],
   "target_sha256": "<exact target digest>",
-  "issuer_identity": {}
+  "issuer_identity": {"runtime": "..."}
 }
 ```
 
@@ -103,9 +109,9 @@ Kinds:
 - `HUMAN_APPROVAL`
 - `PROMOTION_AUTHORIZATION`
 
-The authorization must match the exact target digest and contain the required scope.
+Structural presence is not proof. The consumer must resolve/authenticate the reference and issuer identity before honoring it.
 
-For `external_action=true` or `promotion=true`, the producing boundary must also expose a non-empty runtime/deployment identity. A free-floating string such as `approved_by: human` is not sufficient evidence of who authorized a consequential action.
+Whenever any authority bit is true, the envelope must contain at least one authorization reference and a non-empty producer runtime identity. The consumer still must verify both independently.
 
 ## UNIT
 
@@ -123,29 +129,28 @@ A UNIT defines bounded work:
 
 A UNIT is non-authorizing by default, including reversible/read-only work.
 
-Safe bounded execution may proceed without asking the human every time only when the current operating layer has already issued a matching policy authorization for the exact UNIT digest.
+The current first dogfood slice permits one bounded read-only exception: RIGHT ARM may issue execution authority only for a locally recognized read policy, exact canonical UNIT digest, exact Connector Hub consumer, and established RIGHT ARM runtime identity. Connector Hub must independently authenticate the RIGHT ARM repository/runtime and verify the authorization binding before dispatch.
 
-Consequential work must not reuse a read-only policy authorization.
+Consequential work must not reuse this read-only policy.
 
 ## Consequential two-stage flow
 
 Do not perform an irreversible/external action merely because preparation succeeded.
 
-Required logical shape:
-
 ```text
 UNIT: PREPARE / INSPECT / PROPOSE
-  -> RESULT / EVIDENCE / GATE_RESULT
-  -> exact ACTION CANDIDATE identity
-  -> HUMAN APPROVAL bound to candidate digest
-  -> second bounded EXECUTION invocation
-  -> observable RESULT / external OUTCOME
-  -> TRACE
+ -> RESULT / EVIDENCE / GATE_RESULT
+ -> exact ACTION CANDIDATE identity
+ -> APPROVAL decision record bound to candidate digest
+ -> trusted authority verifier resolves/authenticates the approval
+ -> second bounded EXECUTION invocation carrying verified authority
+ -> observable RESULT / external OUTCOME
+ -> TRACE
 ```
 
-The approval must flow back to the executor. Approval after execution is not a Human Gate.
+Approval after execution is not a Human Gate.
 
-The first Connector Hub dogfood slice is intentionally read-only and does not implement the consequential second invocation yet.
+The first Connector Hub dogfood slice is intentionally read-only and does not implement the consequential second invocation.
 
 ## RESULT and evidence
 
@@ -156,35 +161,35 @@ RESULT EXISTS != COMPLETION
 RESULT FINAL != EXTERNAL OUTCOME
 ```
 
-A consumer may transform a RESULT into local evidence, but it must preserve producer identity, target identity, uncertainty, and durable source references when available.
+Before a RESULT becomes supported local evidence, the consumer must bind it to the exact outstanding target and authenticate its producer/runtime identity. A correct target digest alone does not prove who produced the result.
 
-If the full source payload is omitted from an observer/archive, preserve a content-addressed retrievable reference. If no durable reference exists, reconstructability is degraded and must remain `UNKNOWN` rather than `SUPPORTED`.
+If a full payload is omitted from an observer/archive, `SUPPORTED` reconstructability requires a resolver to retrieve the referenced content and hash-verify the actual bytes/value against the captured payload digest. A producer-supplied `ref` or `digest` alone is not enough.
+
+No resolvable verified source => `UNKNOWN / reconstruction_gap`.
 
 ## GATE_RESULT
 
-Prefer the smallest falsifiable gate owned by the component that can actually check the completion condition.
-
-Do not create a universal gate service merely for architectural symmetry.
+Prefer the smallest falsifiable gate owned by the component able to check the completion condition.
 
 `PASS != AUTHORITY`
 
-A failed gate should return to the smallest producer capable of correcting the failed bounded unit. Whole-batch restart is not the default.
-
-Repeated bounded failure should re-plan/escalate rather than spin indefinitely.
+A failed gate returns to the smallest producer capable of correcting the failed unit. Whole-batch restart is not the default. Repeated bounded failure should re-plan/escalate rather than spin indefinitely.
 
 ## APPROVAL
 
-An APPROVAL must:
+An APPROVAL artifact records a decision bound to exact target identity.
 
-- bind to immutable target identity;
-- preserve the exact decision;
-- identify its authority source;
-- contain a matching `HUMAN_APPROVAL` authorization reference when it grants authority;
-- preserve runtime/issuer identity when consequential authority is granted.
+It may legitimately carry all authority bits as `false` when the current producer can record the decision but cannot authenticate the human/authority source itself. A downstream trusted verifier may validate the referenced decision and create/use a separately authenticated execution boundary.
 
-An approval for one digest is invalid after the target changes.
+Therefore:
 
-`APPROVAL != PROMOTION`
+```text
+APPROVE disposition/decision != execution authority
+approved_by string != authenticated human
+APPROVAL artifact != PROMOTION authority
+```
+
+A pure JSON builder must not become an authority mint merely because the caller supplied a non-empty identity dictionary.
 
 ## TRACE
 
@@ -196,55 +201,63 @@ PASS OBSERVED != AUTHORITY GRANTED
 PROMOTION DECISION OBSERVED != FREEZE RECORD EXISTS
 ```
 
-A pre-archive TRACE conversion is only a `PROPOSED` record candidate.
-
-It must not publish a candidate record hash as final archived evidence until the owning TRACE archive actually appends it and updates/reseals its integrity metadata.
-
-A claimed human decision is recorded as `HUMAN_DECISION` only when human actor identity is established by evidence. Otherwise it remains `APPROVAL_ARTIFACT_OBSERVED`.
+A pre-archive TRACE conversion is only `PROPOSED`. It publishes no final evidence ref until the archive owner actually appends/reseals it.
 
 Observer runtime/deployment identity is required for material TRACE output.
 
+A claimed human actor becomes `HUMAN_DECISION` only when a trusted verifier establishes the human identity evidence. `verified: true` inside a producer-controlled dictionary is not enough.
+
+A sealed candidate record must be re-hashed before deriving provenance so mutation after sealing cannot silently alter what the hash is said to represent.
+
 ## LEARNING_CANDIDATE
 
-A learning candidate must preserve:
+A learning candidate must preserve at minimum:
 
+- the original requested outcome;
+- original completion conditions;
 - supporting evidence;
 - counter-evidence;
 - applicability conditions;
 - counterconditions;
-- unresolved uncertainty.
+- unresolved uncertainty;
+- defect-history references;
+- source TRACE references.
 
-It is not reusable Canon merely because a model derived it.
+It carries no execution/external/promotion authority.
+
+These requirements preserve the surviving WITNESS semantics without reviving WITNESS as software.
 
 ## PROMOTION_DECISION
 
 Promotion is a decision about an exact candidate digest.
 
-It may preserve unresolved judgment explicitly as `UNKNOWN` or `CONFLICT`; do not hide those states inside `DEFER` or lifecycle state.
+A `PROMOTE` disposition may be recorded while `authority.promotion=false`. This is correct when the producer can record the decision but cannot itself authenticate promotion authority.
 
-`PROMOTE` requires evidence and a matching `PROMOTION_AUTHORIZATION` bound to the target digest.
+A consumer may honor promotion only after trusted verification of the exact target, decision source, evidence classifications, and authority boundary.
 
-Current repository ownership of promotion is contextual. There is no mandatory central Promotion Engine.
+`PROMOTE != PROMOTION AUTHORITY`
 
-`RTS-Talent-Registry` is currently COLD/FROZEN historical governance material and is not the default current promotion authority. Its surviving useful ideas—separating confirmed facts, assumptions, unverified facts, and risks—may be reused without reviving the repository as a central service.
+Unresolved judgment remains explicit as `UNKNOWN` or `CONFLICT`.
+
+There is no mandatory central Promotion Engine. `RTS-Talent-Registry` remains COLD/FROZEN historical governance material, not the default promotion runtime.
 
 ## FREEZE_RECORD
 
 FREEZER survives as a responsibility, not as an obligation to restore the old RTS runtime.
 
-A FREEZE_RECORD is valid only after governed promotion and must include:
+A FREEZE_RECORD is valid only after trusted governed promotion and must include:
 
 - promoted claim/invariant;
 - exact promotion decision reference;
 - supporting provenance/evidence;
 - applicability;
 - counterconditions;
-- authority scope;
+- authority scope of the frozen knowledge;
 - reassessment/supersession conditions.
 
-Empty/raw `FREEZE_RECORD` envelopes are invalid.
+A FREEZE_RECORD itself always carries all authority bits `false`.
 
-A FREEZE_RECORD grants no new execution/external/promotion authority by existing.
+`FREEZE_RECORD EXISTS != EXECUTION/PROMOTION AUTHORITY`
 
 ## Obsidian private/public split
 
@@ -255,13 +268,16 @@ explicitly selected local note
  -> credential/sensitivity gate
  -> local PROPOSAL_ONLY candidate
  -> canonical candidate digest
- -> evidence / challenge / human promotion decision as required
+ -> evidence / challenge / promotion decision record
+ -> trusted promotion verifier
  -> local FREEZE_RECORD
 ```
 
-Personal/internal knowledge may freeze locally. Credentials/secrets are not duplicated into durable knowledge candidates.
+Personal/internal knowledge may remain and freeze locally. Credentials/secrets are not duplicated into durable knowledge candidates.
 
-The candidate is re-hashed at promotion time. Editing the candidate after the promotion target was established invalidates the decision.
+Candidate and source hashes are revalidated at promotion time. Editing the candidate invalidates the decision target.
+
+A caller-controlled PROMOTION_DECISION dictionary never authorizes FREEZE by itself. No trusted verifier => BLOCKED.
 
 ### Public-safe RTS-AGE lane
 
@@ -282,11 +298,11 @@ Forbidden shortcut:
 
 ### right-arm
 
-Personal operating layer. Produces bounded UNIT/TRACE/APPROVAL/PROMOTION_DECISION artifacts and consumes result/evidence/gate/trace artifacts as needed.
+Personal operating layer. Produces bounded UNIT/TRACE and non-authorizing APPROVAL/PROMOTION decision records. The current executable interop exception is the exact runtime-bound read-only UNIT policy described above.
 
 ### connector-hub
 
-Connectivity specialist. The current interop dogfood path accepts only exact, authorized, read-only RIGHT ARM UNITs. The v1 allowlist is intentionally narrower than Connector Hub's whole internal registry so future write capabilities cannot silently inherit read authority.
+Connectivity specialist. The current dogfood path accepts only exact read-only RIGHT ARM UNITs after transport-authenticated repository/runtime verification, exact content digest recomputation, authorization issuer-identity matching, and fixed allowlist validation. RESULT carries Connector Hub runtime identity back to RIGHT ARM.
 
 ### TRACE
 
@@ -294,15 +310,15 @@ Passive evidence observer/reconstruction substrate. No governance or archive mut
 
 ### Ultimate-Loop
 
-Canonical development/challenge method, not an event bus. It may logically produce evaluation evidence and learning candidates while leaving runtime transport to bounded owners.
+Canonical development/challenge method, not an event bus.
 
 ### proof-ops
 
-Sales/outreach-domain public-evidence proof preparation. It is not the universal system Gate.
+Sales/outreach-domain public-evidence preparation, not a universal system Gate.
 
 ### RTS Evolution
 
-Owns current reconstruction, responsibility mapping, and interop contract semantics. It must not become a duplicate runtime controller.
+Owns current responsibility mapping and edge-contract semantics. It must not become a duplicate runtime controller.
 
 ## Migration / archaeology rule
 
@@ -328,11 +344,18 @@ Do not finish an obsolete 80% implementation when a newer implementation already
 ```text
 UNIT exists -> execution authority
 REVERSIBLE label -> execution authority
+producer field -> authenticated producer
+runtime_identity field -> authenticated runtime
+authorization_ref exists -> authority verified
 PASS -> execution/external/promotion authority
+APPROVE -> execution/external authority
+approved_by string -> human identity
+PROMOTE -> promotion authority
 approval id matches -> approval still valid
-PROMOTE -> external-action authority
 RESULT exists -> accepted result
+RESULT target hash matches -> producer authenticated
 TRACE candidate exists -> archived TRACE evidence exists
+content-addressed ref string exists -> payload reconstructable
 LEARNING_CANDIDATE exists -> FREEZE_RECORD
 FREEZE_RECORD exists -> build/execution authority
 credential exists -> permission/spend authority
@@ -341,6 +364,8 @@ code exists -> runtime/deployment evidence
 
 ## Machine source of truth
 
-The normative machine shape is `contracts/interop-envelope-v1.schema.json`.
+The normative structural machine shape is `contracts/interop-envelope-v1.schema.json`.
+
+JSON Schema can validate structure but cannot prove transport identity, runtime identity, human identity, referenced content reachability, or authority-source authenticity. Those are consumer/runtime verification responsibilities.
 
 When prose and schema conflict, classify the conflict and repair them together before widening runtime use. Do not silently pick the more permissive interpretation.
