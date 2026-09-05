@@ -4,20 +4,58 @@
 
 This contract defines the smallest common language for connecting independent RTS ecosystem repositories without turning them into one monolith.
 
-A repository may keep its own implementation, storage, workflow, and domain model. It becomes interoperable by declaring:
+A repository may keep its own implementation, storage, workflow, and domain model. Interoperability applies only at a cross-repository boundary, where a repository declares:
 
 ```text
 PRODUCES: <artifact types>
 CONSUMES: <artifact types>
 ```
 
-and by exchanging bounded envelopes that preserve identity, evidence, status, and authority.
+and exchanges a bounded envelope that preserves identity, evidence, lifecycle state, decision semantics, and authority.
 
 ## Core rule
 
 **Edges are canonical; internals remain replaceable.**
 
-A component is not required to copy another repository's internal classes, prompts, database, or control loop merely to interoperate.
+The contract is not an event bus, global controller, mandatory internal domain model, or second runtime. A component is not required to copy another repository's classes, prompts, database, or control loop merely to interoperate.
+
+## Three independent axes
+
+The initial draft incorrectly allowed one generic `status` field to mix lifecycle, gate judgment, and promotion judgment. These are now explicitly separate.
+
+### Lifecycle `state`
+
+Common artifact state only:
+
+- `PROPOSED`
+- `READY`
+- `FINAL`
+- `BLOCKED`
+- `UNKNOWN`
+- `CONFLICT`
+
+### Gate `verdict`
+
+Only `GATE_RESULT` may carry:
+
+- `PASS`
+- `FAIL`
+- `BLOCKED`
+- `UNKNOWN`
+- `CONFLICT`
+- `HUMAN_REQUIRED`
+
+### Promotion `disposition`
+
+Only `PROMOTION_DECISION` may carry:
+
+- `PROMOTE`
+- `REJECT`
+- `DEFER`
+- `QUARANTINE`
+- `NEEDS_MORE_EVIDENCE`
+
+None of these fields implies authority.
 
 ## Artifact types
 
@@ -25,7 +63,7 @@ A component is not required to copy another repository's internal classes, promp
 A bounded piece of requested work.
 
 Minimum meaning:
-- what outcome is requested;
+- requested outcome;
 - scope/boundaries;
 - completion conditions;
 - known consequence class;
@@ -55,16 +93,9 @@ Examples:
 ### 4. GATE_RESULT
 A deterministic or governed evaluation of a candidate/result.
 
-Expected verdict vocabulary:
+A `GATE_RESULT` requires a `verdict`.
 
-- `PASS`
-- `FAIL`
-- `BLOCKED`
-- `UNKNOWN`
-- `CONFLICT`
-- `HUMAN_REQUIRED`
-
-A PASS has no implicit promotion or external-action authority.
+`PASS != AUTHORITY`
 
 ### 5. RETRY_REQUEST
 A request to redo only the failed/bounded unit or to re-plan when the failure invalidates the current unit shape.
@@ -81,9 +112,9 @@ Whole-batch restart is not the default.
 ### 6. APPROVAL
 An explicit human authorization record for a bounded consequence.
 
-Approval should bind to the exact candidate/identity whenever practical.
+Every APPROVAL must bind to an exact `target_artifact_id` or a concrete `target_identity`. A free-floating approval is invalid.
 
-`HUMAN APPROVAL != PROMOTION AUTHORITY` unless the promotion decision explicitly says so.
+`HUMAN APPROVAL != PROMOTION AUTHORITY` unless a separate promotion decision grants that authority.
 
 ### 7. TRACE
 A reconstructable record of what actually happened.
@@ -111,22 +142,14 @@ It must retain:
 - unresolved uncertainty.
 
 ### 9. PROMOTION_DECISION
-A governed decision to accept, reject, defer, or quarantine a learning candidate or component state.
+A governed decision over a learning candidate or component state.
 
-Expected disposition vocabulary:
-
-- `PROMOTE`
-- `REJECT`
-- `DEFER`
-- `QUARANTINE`
-- `NEEDS_MORE_EVIDENCE`
+A `PROMOTION_DECISION` requires a `disposition`.
 
 ### 10. FREEZE_RECORD
 A stable reusable decision/invariant/state accepted after promotion.
 
-FREEZE_RECORD is the surviving role of FREEZER in the reconstructed architecture.
-
-It does not require importing the old RTS FREEZER runtime.
+FREEZE_RECORD is the surviving semantic responsibility of FREEZER in the reconstructed architecture. It does not require importing the old RTS FREEZER runtime or storage layout.
 
 A freeze record should contain:
 - immutable identifier/version;
@@ -145,7 +168,7 @@ Every cross-repository artifact should be representable as:
   "contract_version": "rts-interop/v1",
   "artifact_type": "RESULT",
   "artifact_id": "...",
-  "created_at": "...",
+  "created_at": "2026-09-05T15:00:00+09:00",
   "producer": {
     "repository": "owner/repo",
     "component": "...",
@@ -153,9 +176,12 @@ Every cross-repository artifact should be representable as:
   },
   "subject": {
     "unit_id": "...",
+    "target_artifact_id": null,
+    "target_identity": null,
     "parent_artifact_ids": []
   },
-  "status": "UNKNOWN",
+  "intended_consumers": ["owner/consumer-repo"],
+  "state": "READY",
   "evidence_refs": [],
   "authority": {
     "execution": false,
@@ -166,7 +192,17 @@ Every cross-repository artifact should be representable as:
 }
 ```
 
-The JSON Schema is stored separately as `interop-envelope-v1.schema.json`.
+`GATE_RESULT` adds `verdict`. `PROMOTION_DECISION` adds `disposition`.
+
+The machine contract is `interop-envelope-v1.schema.json`.
+
+## Routing boundary
+
+`intended_consumers` identifies the expected next owner(s) when known. It is not delivery authority and does not require a central broker.
+
+The contract supports direct file/API/message handoff, Git/GitHub records, a product-local adapter, or another replaceable transport.
+
+`ENVELOPE != EVENT BUS`
 
 ## Identity rules
 
@@ -193,14 +229,15 @@ For payments, publications, sends, deployments, or other consequential actions, 
 
 ## Authority rules
 
-Authority is explicit and orthogonal to status.
+Authority is explicit and orthogonal to lifecycle state, gate verdict, and promotion disposition.
 
-The following are forbidden implications:
+Forbidden implications:
 
 ```text
 PASS -> execution authority
 PASS -> external-action authority
 PASS -> promotion authority
+PROMOTE -> external-action authority
 RESULT exists -> accepted result
 TRACE exists -> governed truth
 LEARNING_CANDIDATE exists -> FREEZE_RECORD
@@ -208,19 +245,20 @@ API key exists -> spend authority
 credential exists -> permission expansion
 ```
 
-Missing authority defaults to `false`.
+Missing authority is invalid at the interop boundary; each envelope must state it explicitly. The default safe value is `false`.
 
 ## Evidence rules
 
 - Preserve UNKNOWN/CONFLICT.
 - Never convert missing evidence to a green verdict.
+- A material evidence reference should identify both its kind and location/reference when structured form is used.
 - A verifier must not silently repair the candidate it verifies.
 - A material final judgment should use separated review when evaluator fallibility matters.
 - Evidence generated against an old candidate identity does not automatically transfer to a new candidate.
 
 ## Repository declaration
 
-Every repository connected to this contract should eventually contain a small declaration similar to:
+A connected repository may contain a small edge declaration such as:
 
 ```yaml
 contract_version: rts-interop/v1
@@ -235,7 +273,7 @@ consumes:
   - RESULT
 ```
 
-This declaration describes edges only. It does not create runtime dependency on RTS Evolution.
+This declaration describes cross-repository edges only. It does not make RTS Evolution a runtime dependency and does not require replacing product-local schemas.
 
 ## Initial ecosystem mapping
 
@@ -252,6 +290,8 @@ CONSUMES: EVIDENCE, RESULT, GATE_RESULT, TRACE
 PRODUCES: EVIDENCE, RESULT
 CONSUMES: UNIT, APPROVAL
 ```
+
+Connector Hub is an initial connectivity candidate, not a governance authority.
 
 ### product/worker repositories
 
@@ -274,9 +314,11 @@ PRODUCES: TRACE
 CONSUMES: UNIT, RESULT, EVIDENCE, GATE_RESULT, APPROVAL
 ```
 
+TRACE remains an observation/evidence specialist, not governance.
+
 ### Ultimate-Loop
 
-Ultimate Loop is a method, not a permanent event bus. When applied to a material integration it may produce evaluation evidence and learning candidates, but the method repository itself need not receive every runtime artifact.
+Ultimate Loop is a method, not a permanent event bus. When applied to a material integration it can logically produce evaluation evidence and learning candidates, but the method repository itself need not receive every runtime artifact.
 
 ```text
 LOGICAL OUTPUTS: GATE_RESULT, LEARNING_CANDIDATE
@@ -285,14 +327,16 @@ INPUTS: UNIT, RESULT, EVIDENCE, TRACE
 
 ### RTS-Talent-Registry
 
+The current registry is an initial candidate owner for promotion records; this assignment itself remains subject to survivor review.
+
 ```text
-PRODUCES: PROMOTION_DECISION
+CANDIDATE PRODUCES: PROMOTION_DECISION
 CONSUMES: LEARNING_CANDIDATE, EVIDENCE, GATE_RESULT
 ```
 
 ### RTS Evolution
 
-RTS Evolution owns the current responsibility map, contract semantics, and canonical survivor decisions. It should not become a duplicate runtime controller.
+RTS Evolution owns the current responsibility map, contract semantics, and survivor/canonicalization decisions. It must not become a duplicate runtime controller merely because it owns this contract.
 
 ### FREEZER role
 
@@ -301,7 +345,7 @@ PRODUCES: FREEZE_RECORD
 CONSUMES: PROMOTION_DECISION, LEARNING_CANDIDATE, EVIDENCE
 ```
 
-The physical store may be Git/GitHub, Obsidian-linked governed storage, or another replaceable implementation as long as the semantics remain reconstructable.
+The physical store may be Git/GitHub, an Obsidian-linked governed store, or another replaceable implementation as long as provenance and reconstruction semantics survive.
 
 ## Obsidian ingress contract
 
@@ -358,5 +402,6 @@ This contract does not:
 - create a permanent central controller;
 - make RTS Evolution a runtime dependency;
 - replace product-local schemas;
+- require every internal object to use the interop envelope;
 - bypass Human Gates;
 - grant automatic promotion.
