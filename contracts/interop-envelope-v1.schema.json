@@ -14,53 +14,28 @@
     "state",
     "evidence_refs",
     "authority",
+    "authorization_refs",
     "payload"
   ],
   "properties": {
-    "contract_version": {
-      "const": "rts-interop/v1"
-    },
+    "contract_version": {"const": "rts-interop/v1"},
     "artifact_type": {
       "enum": [
-        "UNIT",
-        "RESULT",
-        "EVIDENCE",
-        "GATE_RESULT",
-        "RETRY_REQUEST",
-        "APPROVAL",
-        "TRACE",
-        "LEARNING_CANDIDATE",
-        "PROMOTION_DECISION",
-        "FREEZE_RECORD"
+        "UNIT", "RESULT", "EVIDENCE", "GATE_RESULT", "RETRY_REQUEST",
+        "APPROVAL", "TRACE", "LEARNING_CANDIDATE", "PROMOTION_DECISION", "FREEZE_RECORD"
       ]
     },
-    "artifact_id": {
-      "type": "string",
-      "minLength": 1
-    },
-    "created_at": {
-      "type": "string",
-      "format": "date-time"
-    },
+    "artifact_id": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "format": "date-time"},
     "producer": {
       "type": "object",
       "additionalProperties": false,
       "required": ["repository"],
       "properties": {
-        "repository": {
-          "type": "string",
-          "minLength": 1
-        },
-        "component": {
-          "type": ["string", "null"]
-        },
-        "commit": {
-          "type": ["string", "null"]
-        },
-        "runtime_identity": {
-          "type": ["object", "null"],
-          "additionalProperties": true
-        }
+        "repository": {"type": "string", "minLength": 1},
+        "component": {"type": ["string", "null"]},
+        "commit": {"type": ["string", "null"]},
+        "runtime_identity": {"type": ["object", "null"], "additionalProperties": true}
       }
     },
     "subject": {
@@ -68,91 +43,40 @@
       "additionalProperties": false,
       "required": ["parent_artifact_ids"],
       "properties": {
-        "unit_id": {
-          "type": ["string", "null"]
-        },
-        "target_artifact_id": {
-          "type": ["string", "null"]
-        },
-        "target_identity": {
-          "type": ["object", "null"],
-          "additionalProperties": true
-        },
+        "unit_id": {"type": ["string", "null"]},
+        "target_artifact_id": {"type": ["string", "null"]},
+        "target_identity": {"$ref": "#/$defs/targetIdentityOrNull"},
         "parent_artifact_ids": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
+          "items": {"type": "string", "minLength": 1},
           "uniqueItems": true
         }
       }
     },
     "intended_consumers": {
       "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      },
+      "items": {"type": "string", "minLength": 1},
       "uniqueItems": true
     },
-    "state": {
-      "enum": [
-        "PROPOSED",
-        "READY",
-        "FINAL",
-        "BLOCKED",
-        "UNKNOWN",
-        "CONFLICT"
-      ]
-    },
-    "verdict": {
-      "enum": [
-        "PASS",
-        "FAIL",
-        "BLOCKED",
-        "UNKNOWN",
-        "CONFLICT",
-        "HUMAN_REQUIRED"
-      ]
-    },
+    "state": {"enum": ["PROPOSED", "READY", "FINAL", "BLOCKED", "UNKNOWN", "CONFLICT"]},
+    "verdict": {"enum": ["PASS", "FAIL", "BLOCKED", "UNKNOWN", "CONFLICT", "HUMAN_REQUIRED"]},
     "disposition": {
-      "enum": [
-        "PROMOTE",
-        "REJECT",
-        "DEFER",
-        "QUARANTINE",
-        "NEEDS_MORE_EVIDENCE"
-      ]
+      "enum": ["PROMOTE", "REJECT", "DEFER", "QUARANTINE", "NEEDS_MORE_EVIDENCE", "UNKNOWN", "CONFLICT"]
     },
     "evidence_refs": {
       "type": "array",
       "items": {
         "oneOf": [
-          {
-            "type": "string",
-            "minLength": 1
-          },
+          {"type": "string", "minLength": 1},
           {
             "type": "object",
             "additionalProperties": false,
             "required": ["kind", "ref"],
             "properties": {
-              "kind": {
-                "type": "string",
-                "minLength": 1
-              },
-              "ref": {
-                "type": "string",
-                "minLength": 1
-              },
-              "digest": {
-                "type": ["string", "null"]
-              },
-              "identity": {
-                "type": ["object", "null"],
-                "additionalProperties": true
-              }
+              "kind": {"type": "string", "minLength": 1},
+              "ref": {"type": "string", "minLength": 1},
+              "digest": {"type": ["string", "null"]},
+              "identity": {"type": ["object", "null"], "additionalProperties": true}
             }
           }
         ]
@@ -163,85 +87,138 @@
       "additionalProperties": false,
       "required": ["execution", "external_action", "promotion"],
       "properties": {
-        "execution": {
-          "type": "boolean"
-        },
-        "external_action": {
-          "type": "boolean"
-        },
-        "promotion": {
-          "type": "boolean"
-        }
+        "execution": {"type": "boolean"},
+        "external_action": {"type": "boolean"},
+        "promotion": {"type": "boolean"}
       }
     },
-    "payload": {
+    "authorization_refs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/authorizationRef"},
+      "uniqueItems": true
+    },
+    "payload": {"type": "object", "additionalProperties": true}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "targetIdentity": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": false,
+      "required": ["repository", "artifact_id", "sha256"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "artifact_id": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "commit": {"type": ["string", "null"]}
+      }
+    },
+    "targetIdentityOrNull": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/targetIdentity"}
+      ]
+    },
+    "authorizationRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "ref", "issuer", "scope", "target_sha256"],
+      "properties": {
+        "kind": {"enum": ["POLICY_AUTHORIZATION", "HUMAN_APPROVAL", "PROMOTION_AUTHORIZATION"]},
+        "ref": {"type": "string", "minLength": 1},
+        "issuer": {"type": "string", "minLength": 1},
+        "scope": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "target_sha256": {"$ref": "#/$defs/sha256"},
+        "issuer_identity": {"type": ["object", "null"], "additionalProperties": true}
+      }
     }
   },
   "allOf": [
     {
-      "if": {
-        "properties": {
-          "artifact_type": {"const": "GATE_RESULT"}
-        },
-        "required": ["artifact_type"]
-      },
-      "then": {
-        "required": ["verdict"]
-      },
-      "else": {
-        "not": {
-          "required": ["verdict"]
-        }
-      }
+      "if": {"properties": {"artifact_type": {"const": "GATE_RESULT"}}, "required": ["artifact_type"]},
+      "then": {"required": ["verdict"]},
+      "else": {"not": {"required": ["verdict"]}}
     },
     {
-      "if": {
-        "properties": {
-          "artifact_type": {"const": "PROMOTION_DECISION"}
-        },
-        "required": ["artifact_type"]
-      },
+      "if": {"properties": {"artifact_type": {"const": "PROMOTION_DECISION"}}, "required": ["artifact_type"]},
       "then": {
-        "required": ["disposition"]
-      },
-      "else": {
-        "not": {
-          "required": ["disposition"]
+        "required": ["disposition"],
+        "properties": {
+          "subject": {
+            "required": ["target_identity"],
+            "properties": {"target_identity": {"$ref": "#/$defs/targetIdentity"}}
+          }
         }
-      }
+      },
+      "else": {"not": {"required": ["disposition"]}}
     },
     {
-      "if": {
-        "properties": {
-          "artifact_type": {"const": "APPROVAL"}
-        },
-        "required": ["artifact_type"]
-      },
+      "if": {"properties": {"artifact_type": {"const": "APPROVAL"}}, "required": ["artifact_type"]},
       "then": {
         "properties": {
           "subject": {
-            "anyOf": [
-              {
-                "required": ["target_artifact_id"],
-                "properties": {
-                  "target_artifact_id": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                }
-              },
-              {
-                "required": ["target_identity"],
-                "properties": {
-                  "target_identity": {
-                    "type": "object",
-                    "minProperties": 1
-                  }
-                }
-              }
-            ]
+            "required": ["target_identity"],
+            "properties": {"target_identity": {"$ref": "#/$defs/targetIdentity"}}
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {"properties": {"authority": {"properties": {"execution": {"const": true}}, "required": ["execution"]}}},
+          {"properties": {"authority": {"properties": {"external_action": {"const": true}}, "required": ["external_action"]}}},
+          {"properties": {"authority": {"properties": {"promotion": {"const": true}}, "required": ["promotion"]}}}
+        ]
+      },
+      "then": {"properties": {"authorization_refs": {"minItems": 1}}}
+    },
+    {
+      "if": {
+        "anyOf": [
+          {"properties": {"authority": {"properties": {"external_action": {"const": true}}, "required": ["external_action"]}}},
+          {"properties": {"authority": {"properties": {"promotion": {"const": true}}, "required": ["promotion"]}}}
+        ]
+      },
+      "then": {
+        "properties": {
+          "producer": {
+            "required": ["runtime_identity"],
+            "properties": {"runtime_identity": {"type": "object", "minProperties": 1}}
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"artifact_type": {"const": "FREEZE_RECORD"}}, "required": ["artifact_type"]},
+      "then": {
+        "properties": {
+          "state": {"const": "FINAL"},
+          "authority": {
+            "properties": {"promotion": {"const": false}}
+          },
+          "subject": {
+            "properties": {"parent_artifact_ids": {"minItems": 2}}
+          },
+          "evidence_refs": {"minItems": 1},
+          "payload": {
+            "required": [
+              "claim", "promotion_decision_ref", "provenance_refs", "applicability",
+              "counterconditions", "authority_scope", "reassessment_conditions"
+            ],
+            "properties": {
+              "claim": {"type": "string", "minLength": 1},
+              "promotion_decision_ref": {"type": "string", "minLength": 1},
+              "provenance_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "applicability": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "counterconditions": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "authority_scope": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "reassessment_conditions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+            }
           }
         }
       }
