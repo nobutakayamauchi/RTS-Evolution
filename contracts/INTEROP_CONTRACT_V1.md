@@ -1,447 +1,346 @@
 # RTS Evolution Inter-Repository Contract v1
 
+Status: DRAFT / DOGFOOD / POST-DA REPAIR
+
 ## Purpose
 
-This contract defines the smallest common language for connecting independent RTS ecosystem repositories without turning them into one monolith.
-
-A repository may keep its own implementation, storage, workflow, and domain model. Interoperability applies only at a cross-repository boundary, where a repository declares:
-
-```text
-PRODUCES: <artifact types>
-CONSUMES: <artifact types>
-```
-
-and exchanges a bounded envelope that preserves identity, evidence, lifecycle state, decision semantics, and authority.
-
-## Core rule
+This contract is the smallest common language for connecting independent RTS ecosystem repositories without rebuilding them into one monolith.
 
 **Edges are canonical; internals remain replaceable.**
 
-The contract is not an event bus, global controller, mandatory internal domain model, or second runtime. A component is not required to copy another repository's classes, prompts, database, or control loop merely to interoperate.
+A repository keeps its own models, storage, runtime and workflow. The common envelope is required only when responsibility crosses a repository boundary.
 
-## Three independent axes
+This contract is not an event bus, global controller, governance kernel, database, or replacement for product-local schemas.
 
-The initial draft incorrectly allowed one generic `status` field to mix lifecycle, gate judgment, and promotion judgment. These are now explicitly separate.
+## Artifact vocabulary
+
+Cross-repository work may use these artifact types:
+
+- `UNIT` — bounded requested work;
+- `RESULT` — bounded worker/tool output;
+- `EVIDENCE` — observable support for a claim;
+- `GATE_RESULT` — falsifiable/governed evaluation;
+- `RETRY_REQUEST` — bounded correction/re-plan request;
+- `APPROVAL` — explicit authorization for an exact consequence;
+- `TRACE` — reconstructable observation record/candidate;
+- `LEARNING_CANDIDATE` — proposed reusable lesson, not Canon;
+- `PROMOTION_DECISION` — governed disposition of an exact candidate;
+- `FREEZE_RECORD` — promoted reusable knowledge/state with provenance.
+
+## Independent axes
+
+Do not collapse lifecycle, evaluation, promotion, and authority into one status.
 
 ### Lifecycle `state`
 
-Common artifact state only:
-
-- `PROPOSED`
-- `READY`
-- `FINAL`
-- `BLOCKED`
-- `UNKNOWN`
-- `CONFLICT`
+`PROPOSED | READY | FINAL | BLOCKED | UNKNOWN | CONFLICT`
 
 ### Gate `verdict`
 
-Only `GATE_RESULT` may carry:
+Only `GATE_RESULT` carries:
 
-- `PASS`
-- `FAIL`
-- `BLOCKED`
-- `UNKNOWN`
-- `CONFLICT`
-- `HUMAN_REQUIRED`
+`PASS | FAIL | BLOCKED | UNKNOWN | CONFLICT | HUMAN_REQUIRED`
 
 ### Promotion `disposition`
 
-Only `PROMOTION_DECISION` may carry:
+Only `PROMOTION_DECISION` carries:
 
-- `PROMOTE`
-- `REJECT`
-- `DEFER`
-- `QUARANTINE`
-- `NEEDS_MORE_EVIDENCE`
+`PROMOTE | REJECT | DEFER | QUARANTINE | NEEDS_MORE_EVIDENCE | UNKNOWN | CONFLICT`
 
-None of these fields implies authority.
+### Authority
 
-## Artifact types
+Every envelope carries explicit booleans:
 
-### 1. UNIT
-A bounded piece of requested work.
+```json
+{
+  "execution": false,
+  "external_action": false,
+  "promotion": false
+}
+```
 
-Minimum meaning:
+A true authority bit is never sufficient by itself. It must be backed by a matching `authorization_refs` entry.
+
+## Immutable target identity
+
+Authority-bearing decisions must bind to immutable content identity, not only a local name or ID.
+
+Required target shape:
+
+```json
+{
+  "repository": "owner/repo",
+  "artifact_id": "candidate-123",
+  "sha256": "<64 lowercase hex>",
+  "commit": null
+}
+```
+
+The digest represents the exact bounded material being authorized or promoted.
+
+If content changes, the digest changes and the old authorization does not transfer.
+
+`SAME ID != SAME CANDIDATE`
+
+## Authorization references
+
+When any authority bit is true, at least one explicit authorization reference is required.
+
+```json
+{
+  "kind": "POLICY_AUTHORIZATION",
+  "ref": "right-arm:policy:read-only-v1",
+  "issuer": "nobutakayamauchi/right-arm",
+  "scope": ["execution:bounded"],
+  "target_sha256": "<exact target digest>",
+  "issuer_identity": {}
+}
+```
+
+Kinds:
+
+- `POLICY_AUTHORIZATION`
+- `HUMAN_APPROVAL`
+- `PROMOTION_AUTHORIZATION`
+
+The authorization must match the exact target digest and contain the required scope.
+
+For `external_action=true` or `promotion=true`, the producing boundary must also expose a non-empty runtime/deployment identity. A free-floating string such as `approved_by: human` is not sufficient evidence of who authorized a consequential action.
+
+## UNIT
+
+A UNIT defines bounded work:
+
 - requested outcome;
-- scope/boundaries;
+- scope;
 - completion conditions;
-- known consequence class;
-- source identity.
+- consequence class;
+- source identity;
+- exact task payload;
+- intended consumer(s).
 
-`UNIT EXISTS != EXECUTION AUTHORITY`.
+`UNIT EXISTS != EXECUTION AUTHORITY`
 
-A UNIT may carry `authority.execution=true` only when the producing component has already established bounded execution authority through its own current policy/gate. This supports safe reversible work without forcing a human approval on every read/check. Consequential work must remain false until the required approval boundary is satisfied.
+A UNIT is non-authorizing by default, including reversible/read-only work.
 
-### 2. RESULT
-The bounded output of a worker/tool/product step.
+Safe bounded execution may proceed without asking the human every time only when the current operating layer has already issued a matching policy authorization for the exact UNIT digest.
 
-A RESULT must not erase UNKNOWN/CONFLICT or claim success without evidence.
+Consequential work must not reuse a read-only policy authorization.
 
-### 3. EVIDENCE
-Observable support for a claim.
+## Consequential two-stage flow
 
-Examples:
-- repository identity;
-- diff/commit;
-- test/CI result;
-- source excerpt/reference;
-- runtime/deployment identity;
-- external outcome;
-- explicit human decision.
+Do not perform an irreversible/external action merely because preparation succeeded.
 
-`INTERPRETATION != EVIDENCE`
+Required logical shape:
 
-### 4. GATE_RESULT
-A deterministic or governed evaluation of a candidate/result.
+```text
+UNIT: PREPARE / INSPECT / PROPOSE
+  -> RESULT / EVIDENCE / GATE_RESULT
+  -> exact ACTION CANDIDATE identity
+  -> HUMAN APPROVAL bound to candidate digest
+  -> second bounded EXECUTION invocation
+  -> observable RESULT / external OUTCOME
+  -> TRACE
+```
 
-A `GATE_RESULT` requires a `verdict`.
+The approval must flow back to the executor. Approval after execution is not a Human Gate.
+
+The first Connector Hub dogfood slice is intentionally read-only and does not implement the consequential second invocation yet.
+
+## RESULT and evidence
+
+A RESULT is not automatically accepted truth or completion.
+
+```text
+RESULT EXISTS != COMPLETION
+RESULT FINAL != EXTERNAL OUTCOME
+```
+
+A consumer may transform a RESULT into local evidence, but it must preserve producer identity, target identity, uncertainty, and durable source references when available.
+
+If the full source payload is omitted from an observer/archive, preserve a content-addressed retrievable reference. If no durable reference exists, reconstructability is degraded and must remain `UNKNOWN` rather than `SUPPORTED`.
+
+## GATE_RESULT
+
+Prefer the smallest falsifiable gate owned by the component that can actually check the completion condition.
+
+Do not create a universal gate service merely for architectural symmetry.
 
 `PASS != AUTHORITY`
 
-A generic system-wide gate service is not required. Prefer deterministic/product-local checks owned by the component that can actually falsify the relevant completion condition. Use Ultimate Loop destructive evaluation for material semantic changes rather than forcing every domain through one proof repository.
+A failed gate should return to the smallest producer capable of correcting the failed bounded unit. Whole-batch restart is not the default.
 
-### 5. RETRY_REQUEST
-A request to redo only the failed/bounded unit or to re-plan when the failure invalidates the current unit shape.
+Repeated bounded failure should re-plan/escalate rather than spin indefinitely.
 
-Must identify:
-- failed unit;
-- failed gate;
-- reason;
-- retained evidence;
-- allowed retry scope.
+## APPROVAL
 
-Whole-batch restart is not the default.
+An APPROVAL must:
 
-### 6. APPROVAL
-An explicit human authorization record for a bounded consequence.
+- bind to immutable target identity;
+- preserve the exact decision;
+- identify its authority source;
+- contain a matching `HUMAN_APPROVAL` authorization reference when it grants authority;
+- preserve runtime/issuer identity when consequential authority is granted.
 
-Every APPROVAL must bind to an exact `target_artifact_id` or a concrete `target_identity`. A free-floating approval is invalid.
+An approval for one digest is invalid after the target changes.
 
-`HUMAN APPROVAL != PROMOTION AUTHORITY` unless a separate promotion decision grants that authority.
+`APPROVAL != PROMOTION`
 
-### 7. TRACE
-A reconstructable record of what actually happened.
+## TRACE
 
-TRACE is evidence/observation, not governance.
-
-Minimum useful trace separates:
-- intended action;
-- executor/runtime identity;
-- observable execution;
-- result;
-- gate/verdict;
-- external outcome when applicable.
-
-Observing an artifact does not validate the truth of the artifact's payload. In particular:
+TRACE observes and preserves evidence; it does not govern.
 
 ```text
 RESULT OBSERVED != COMPLETION PROVED
-PROMOTION DECISION OBSERVED != FREEZE RECORD EXISTS
 PASS OBSERVED != AUTHORITY GRANTED
+PROMOTION DECISION OBSERVED != FREEZE RECORD EXISTS
 ```
 
-### 8. LEARNING_CANDIDATE
-A proposed reusable lesson/invariant derived from one or more traces/evidence sets.
+A pre-archive TRACE conversion is only a `PROPOSED` record candidate.
 
-It is not reusable Canon yet.
+It must not publish a candidate record hash as final archived evidence until the owning TRACE archive actually appends it and updates/reseals its integrity metadata.
 
-It must retain:
+A claimed human decision is recorded as `HUMAN_DECISION` only when human actor identity is established by evidence. Otherwise it remains `APPROVAL_ARTIFACT_OBSERVED`.
+
+Observer runtime/deployment identity is required for material TRACE output.
+
+## LEARNING_CANDIDATE
+
+A learning candidate must preserve:
+
 - supporting evidence;
 - counter-evidence;
 - applicability conditions;
 - counterconditions;
 - unresolved uncertainty.
 
-### 9. PROMOTION_DECISION
-A governed decision over a learning candidate or component state.
+It is not reusable Canon merely because a model derived it.
 
-A `PROMOTION_DECISION` requires a `disposition`.
+## PROMOTION_DECISION
 
-### 10. FREEZE_RECORD
-A stable reusable decision/invariant/state accepted after promotion.
+Promotion is a decision about an exact candidate digest.
 
-FREEZE_RECORD is the surviving semantic responsibility of FREEZER in the reconstructed architecture. It does not require importing the old RTS FREEZER runtime or storage layout.
+It may preserve unresolved judgment explicitly as `UNKNOWN` or `CONFLICT`; do not hide those states inside `DEFER` or lifecycle state.
 
-A freeze record should contain:
-- immutable identifier/version;
+`PROMOTE` requires evidence and a matching `PROMOTION_AUTHORIZATION` bound to the target digest.
+
+Current repository ownership of promotion is contextual. There is no mandatory central Promotion Engine.
+
+`RTS-Talent-Registry` is currently COLD/FROZEN historical governance material and is not the default current promotion authority. Its surviving useful ideas—separating confirmed facts, assumptions, unverified facts, and risks—may be reused without reviving the repository as a central service.
+
+## FREEZE_RECORD
+
+FREEZER survives as a responsibility, not as an obligation to restore the old RTS runtime.
+
+A FREEZE_RECORD is valid only after governed promotion and must include:
+
 - promoted claim/invariant;
-- applicability and counterconditions;
-- provenance/evidence references;
+- exact promotion decision reference;
+- supporting provenance/evidence;
+- applicability;
+- counterconditions;
 - authority scope;
-- supersession/reassessment conditions.
+- reassessment/supersession conditions.
 
-## Common envelope
+Empty/raw `FREEZE_RECORD` envelopes are invalid.
 
-Every cross-repository artifact should be representable as:
+A FREEZE_RECORD grants no new execution/external/promotion authority by existing.
 
-```json
-{
-  "contract_version": "rts-interop/v1",
-  "artifact_type": "RESULT",
-  "artifact_id": "...",
-  "created_at": "2026-09-05T15:00:00+09:00",
-  "producer": {
-    "repository": "owner/repo",
-    "component": "...",
-    "commit": "..."
-  },
-  "subject": {
-    "unit_id": "...",
-    "target_artifact_id": null,
-    "target_identity": null,
-    "parent_artifact_ids": []
-  },
-  "intended_consumers": ["owner/consumer-repo"],
-  "state": "READY",
-  "evidence_refs": [],
-  "authority": {
-    "execution": false,
-    "external_action": false,
-    "promotion": false
-  },
-  "payload": {}
-}
-```
+## Obsidian private/public split
 
-`GATE_RESULT` adds `verdict`. `PROMOTION_DECISION` adds `disposition`.
-
-The machine contract is `interop-envelope-v1.schema.json`.
-
-## Routing boundary
-
-`intended_consumers` identifies the expected next owner(s) when known. It is not delivery authority and does not require a central broker.
-
-The contract supports direct file/API/message handoff, Git/GitHub records, a product-local adapter, or another replaceable transport.
-
-`ENVELOPE != EVENT BUS`
-
-## Identity rules
-
-### Repository identity
-Material artifacts should bind to a commit/ref when the claim depends on code state.
-
-### Runtime/deployment identity
-When a claim concerns deployed behavior, repository identity alone is insufficient.
-
-At minimum record the strongest available observable identity such as:
-- service/unit;
-- working directory;
-- executable/module;
-- route/endpoint;
-- deployed commit/revision;
-- provider/model identity where relevant and observable.
-
-`CODE EXISTENCE != RUNTIME EVIDENCE`
-
-### External outcome identity
-For payments, publications, sends, deployments, or other consequential actions, trace the actual external outcome separately from the attempted execution.
-
-`EXECUTION ATTEMPT != OUTCOME`
-
-## Authority rules
-
-Authority is explicit and orthogonal to lifecycle state, gate verdict, and promotion disposition.
-
-`execution=true` means the producer has established authority for the bounded work represented by this artifact. It is not inferred from artifact type or existence. A current policy may establish this for reversible/read-only work; a consequential action normally requires an exact Human Approval or another explicitly governed authority source.
-
-`external_action=true` is a narrower consequential permission and must not be inferred merely because `execution=true`.
-
-Forbidden implications:
+### Private RIGHT ARM lane
 
 ```text
-UNIT exists -> execution authority
-PASS -> execution authority
-PASS -> external-action authority
-PASS -> promotion authority
-PROMOTE -> external-action authority
-RESULT exists -> accepted result
-TRACE exists -> governed truth
-LEARNING_CANDIDATE exists -> FREEZE_RECORD
-API key exists -> spend authority
-credential exists -> permission expansion
+explicitly selected local note
+ -> credential/sensitivity gate
+ -> local PROPOSAL_ONLY candidate
+ -> canonical candidate digest
+ -> evidence / challenge / human promotion decision as required
+ -> local FREEZE_RECORD
 ```
 
-Missing authority is invalid at the interop boundary; each envelope must state it explicitly. The default safe value is `false`.
+Personal/internal knowledge may freeze locally. Credentials/secrets are not duplicated into durable knowledge candidates.
 
-## Evidence rules
+The candidate is re-hashed at promotion time. Editing the candidate after the promotion target was established invalidates the decision.
 
-- Preserve UNKNOWN/CONFLICT.
-- Never convert missing evidence to a green verdict.
-- A material evidence reference should identify both its kind and location/reference when structured form is used.
-- A verifier must not silently repair the candidate it verifies.
-- A material final judgment should use separated review when evaluator fallibility matters.
-- Evidence generated against an old candidate identity does not automatically transfer to a new candidate.
-
-## Repository declaration
-
-A connected repository may contain a small edge declaration such as:
-
-```yaml
-contract_version: rts-interop/v1
-repository: nobutakayamauchi/right-arm
-role: personal_operating_layer
-produces:
-  - UNIT
-  - TRACE
-  - APPROVAL
-consumes:
-  - EVIDENCE
-  - GATE_RESULT
-  - RESULT
-  - TRACE
-```
-
-This declaration describes cross-repository edges only. It does not make RTS Evolution a runtime dependency and does not require replacing product-local schemas.
-
-## Initial ecosystem mapping
-
-### right-arm
+### Public-safe RTS-AGE lane
 
 ```text
-PRODUCES: UNIT, TRACE, APPROVAL
-CONSUMES: EVIDENCE, RESULT, GATE_RESULT, TRACE
-```
-
-### connector-hub
-
-```text
-PRODUCES: EVIDENCE, RESULT
-CONSUMES: UNIT, APPROVAL
-```
-
-Connector Hub is an initial connectivity candidate, not a governance authority.
-
-### product/worker repositories
-
-```text
-PRODUCES: RESULT, EVIDENCE, GATE_RESULT (when the product owns a falsifiable gate)
-CONSUMES: UNIT, APPROVAL (when consequence requires it)
-```
-
-### proof-ops
-
-`proof-ops` is not the universal RTS gate. Its current repository contract is specifically B2B public-evidence research/proof/outreach preparation.
-
-```text
-DOMAIN: sales / outreach preparation
-PRODUCES: RESULT, EVIDENCE (sales-domain proof packets)
-CONSUMES: UNIT, public-source EVIDENCE
-EXTERNAL OUTREACH: requires explicit human approval
-```
-
-Do not route unrelated runtime, deployment, learning, or system-wide verification through proof-ops merely because its name contains “proof”.
-
-### TRACE
-
-```text
-PRODUCES: TRACE
-CONSUMES: UNIT, RESULT, EVIDENCE, GATE_RESULT, RETRY_REQUEST, APPROVAL,
-          TRACE, LEARNING_CANDIDATE, PROMOTION_DECISION, FREEZE_RECORD
-```
-
-TRACE remains an observation/evidence specialist, not governance. Its first interop adapter produces source-record candidates and deterministic chain fields but does not silently append to an existing SEALED run; append/reseal remains the archive owner's responsibility.
-
-### Ultimate-Loop
-
-Ultimate Loop is a method, not a permanent event bus. When applied to a material integration it can logically produce evaluation evidence and learning candidates, but the method repository itself need not receive every runtime artifact.
-
-```text
-LOGICAL OUTPUTS: GATE_RESULT, LEARNING_CANDIDATE
-INPUTS: UNIT, RESULT, EVIDENCE, TRACE
-```
-
-### RTS-Talent-Registry
-
-The current registry is an initial candidate owner for promotion records; this assignment itself remains subject to survivor review.
-
-```text
-CANDIDATE PRODUCES: PROMOTION_DECISION
-CONSUMES: LEARNING_CANDIDATE, EVIDENCE, GATE_RESULT
-```
-
-### RTS Evolution
-
-RTS Evolution owns the current responsibility map, contract semantics, and survivor/canonicalization decisions. It must not become a duplicate runtime controller merely because it owns this contract.
-
-### FREEZER role
-
-```text
-PRODUCES: FREEZE_RECORD
-CONSUMES: PROMOTION_DECISION, LEARNING_CANDIDATE, EVIDENCE
-```
-
-The physical store may be Git/GitHub, an Obsidian-linked governed store, or another replaceable implementation as long as provenance and reconstruction semantics survive.
-
-## Obsidian ingress contract
-
-Obsidian is capture/staging, not automatic Canon.
-
-Two routes exist because private personal knowledge and public-safe proposals have different leakage boundaries.
-
-### Private route
-
-```text
-SELECTED LOCAL NOTE
-  -> local PROPOSAL_ONLY candidate
-  -> sensitivity/credential gate
-  -> separated review / counter-evidence as required
-  -> PROMOTION_DECISION
-  -> local FREEZE_RECORD
-```
-
-Personal/internal data may remain local and freeze locally. Credential/secret-like material should not be duplicated into durable knowledge artifacts.
-
-### Public-safe proposal route
-
-```text
-HUMAN-AUTHORED PUBLIC-SAFE NOTE/PROPOSAL
-  -> proposal-only ingress
-  -> public safety validation
-  -> reviewable implementation/record proposal
+human-authored public-safe proposal
+ -> proposal-only ingress
+ -> public-safety validation
+ -> reviewable implementation/record proposal
 ```
 
 Do not send private Vault bodies through a public GitHub Issue path.
 
 Forbidden shortcut:
 
+`OBSIDIAN NOTE -> FREEZE_RECORD`
+
+## Current initial owners
+
+### right-arm
+
+Personal operating layer. Produces bounded UNIT/TRACE/APPROVAL/PROMOTION_DECISION artifacts and consumes result/evidence/gate/trace artifacts as needed.
+
+### connector-hub
+
+Connectivity specialist. The current interop dogfood path accepts only exact, authorized, read-only RIGHT ARM UNITs. The v1 allowlist is intentionally narrower than Connector Hub's whole internal registry so future write capabilities cannot silently inherit read authority.
+
+### TRACE
+
+Passive evidence observer/reconstruction substrate. No governance or archive mutation is implied by observing an envelope.
+
+### Ultimate-Loop
+
+Canonical development/challenge method, not an event bus. It may logically produce evaluation evidence and learning candidates while leaving runtime transport to bounded owners.
+
+### proof-ops
+
+Sales/outreach-domain public-evidence proof preparation. It is not the universal system Gate.
+
+### RTS Evolution
+
+Owns current reconstruction, responsibility mapping, and interop contract semantics. It must not become a duplicate runtime controller.
+
+## Migration / archaeology rule
+
+When a current gap is found, do not immediately create a new subsystem.
+
 ```text
-OBSIDIAN NOTE -> FREEZE_RECORD
+problem found
+ -> search current main + open PR + floating branches + historical predecessor
+ -> identify newer/surviving responsibility
+ -> salvage smallest useful implementation/test
+ -> connect to current owner
+ -> DA / Counter-DA
+ -> verify
+ -> freeze old implementation as history when superseded
 ```
-
-## Retry / loop rule
-
-Use loop inside a bounded unit and graph between units.
-
-A failed gate should return to the smallest producer capable of correcting the failure.
-
-After bounded repeated failure, re-plan or escalate rather than spinning indefinitely.
-
-The exact retry count is implementation-specific; it is not a universal architectural constant.
-
-## Migration rule
-
-When salvaging old RTS or floating-branch implementation:
-
-1. identify the responsibility;
-2. prove the responsibility still survives;
-3. identify the current owner;
-4. port the smallest implementation/test surface that carries that responsibility;
-5. preserve provenance to the old source;
-6. run destructive DA / Counter-DA for material semantics;
-7. verify the current owner rather than merging old architecture wholesale.
 
 **Copy the survivor, preserve the graveyard.**
 
-## Non-goals
+Do not finish an obsolete 80% implementation when a newer implementation already contains the surviving responsibility. Port the useful 20% forward instead.
 
-This contract does not:
-- merge repositories;
-- dictate language/framework;
-- create a global database;
-- create a permanent central controller;
-- make RTS Evolution a runtime dependency;
-- replace product-local schemas;
-- require every internal object to use the interop envelope;
-- bypass Human Gates;
-- grant automatic promotion.
+## Forbidden implications
+
+```text
+UNIT exists -> execution authority
+REVERSIBLE label -> execution authority
+PASS -> execution/external/promotion authority
+approval id matches -> approval still valid
+PROMOTE -> external-action authority
+RESULT exists -> accepted result
+TRACE candidate exists -> archived TRACE evidence exists
+LEARNING_CANDIDATE exists -> FREEZE_RECORD
+FREEZE_RECORD exists -> build/execution authority
+credential exists -> permission/spend authority
+code exists -> runtime/deployment evidence
+```
+
+## Machine source of truth
+
+The normative machine shape is `contracts/interop-envelope-v1.schema.json`.
+
+When prose and schema conflict, classify the conflict and repair them together before widening runtime use. Do not silently pick the more permissive interpretation.
