@@ -69,7 +69,9 @@ Minimum meaning:
 - known consequence class;
 - source identity.
 
-A UNIT is not execution authority by itself.
+`UNIT EXISTS != EXECUTION AUTHORITY`.
+
+A UNIT may carry `authority.execution=true` only when the producing component has already established bounded execution authority through its own current policy/gate. This supports safe reversible work without forcing a human approval on every read/check. Consequential work must remain false until the required approval boundary is satisfied.
 
 ### 2. RESULT
 The bounded output of a worker/tool/product step.
@@ -231,9 +233,14 @@ For payments, publications, sends, deployments, or other consequential actions, 
 
 Authority is explicit and orthogonal to lifecycle state, gate verdict, and promotion disposition.
 
+`execution=true` means the producer has established authority for the bounded work represented by this artifact. It is not inferred from artifact type or existence. A current policy may establish this for reversible/read-only work; a consequential action normally requires an exact Human Approval or another explicitly governed authority source.
+
+`external_action=true` is a narrower consequential permission and must not be inferred merely because `execution=true`.
+
 Forbidden implications:
 
 ```text
+UNIT exists -> execution authority
 PASS -> execution authority
 PASS -> external-action authority
 PASS -> promotion authority
@@ -266,11 +273,13 @@ repository: nobutakayamauchi/right-arm
 role: personal_operating_layer
 produces:
   - UNIT
+  - TRACE
   - APPROVAL
 consumes:
   - EVIDENCE
   - GATE_RESULT
   - RESULT
+  - TRACE
 ```
 
 This declaration describes cross-repository edges only. It does not make RTS Evolution a runtime dependency and does not require replacing product-local schemas.
@@ -280,7 +289,7 @@ This declaration describes cross-repository edges only. It does not make RTS Evo
 ### right-arm
 
 ```text
-PRODUCES: UNIT, APPROVAL
+PRODUCES: UNIT, TRACE, APPROVAL
 CONSUMES: EVIDENCE, RESULT, GATE_RESULT, TRACE
 ```
 
