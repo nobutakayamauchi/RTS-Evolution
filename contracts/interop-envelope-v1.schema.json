@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nobutakayamauchi/RTS-Evolution/contracts/interop-envelope-v1.schema.json",
+  "title": "RTS Interop Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "artifact_type",
+    "artifact_id",
+    "producer",
+    "status",
+    "evidence_refs",
+    "authority",
+    "payload"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "rts-interop/v1"
+    },
+    "artifact_type": {
+      "enum": [
+        "UNIT",
+        "RESULT",
+        "EVIDENCE",
+        "GATE_RESULT",
+        "RETRY_REQUEST",
+        "APPROVAL",
+        "TRACE",
+        "LEARNING_CANDIDATE",
+        "PROMOTION_DECISION",
+        "FREEZE_RECORD"
+      ]
+    },
+    "artifact_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "component": {
+          "type": ["string", "null"]
+        },
+        "commit": {
+          "type": ["string", "null"]
+        },
+        "runtime_identity": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unit_id": {
+          "type": ["string", "null"]
+        },
+        "parent_artifact_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "status": {
+      "enum": [
+        "READY",
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "UNKNOWN",
+        "CONFLICT",
+        "HUMAN_REQUIRED",
+        "ACCEPTED",
+        "REJECTED",
+        "DEFERRED",
+        "QUARANTINED"
+      ]
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": true
+          }
+        ]
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution", "external_action", "promotion"],
+      "properties": {
+        "execution": {
+          "type": "boolean"
+        },
+        "external_action": {
+          "type": "boolean"
+        },
+        "promotion": {
+          "type": "boolean"
+        }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}
