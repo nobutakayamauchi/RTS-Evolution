@@ -2,27 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/nobutakayamauchi/RTS-Evolution/contracts/interop-envelope-v1.schema.json",
   "title": "RTS Interop Envelope v1",
-  "$comment": "Schema validity is structural only. authority=true and authorization_refs are producer assertions until the consumer independently authenticates producer/runtime identity and resolves the referenced authority source.",
+  "$comment": "rts-interop/v1 is structural and non-authorizing. No envelope in v1 can grant execution, external-action, or promotion authority.",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "contract_version", "artifact_type", "artifact_id", "created_at", "producer",
-    "subject", "state", "evidence_refs", "authority", "authorization_refs", "payload"
-  ],
+  "required": ["contract_version", "artifact_type", "artifact_id", "created_at", "producer", "subject", "state", "evidence_refs", "authority", "authorization_refs", "payload"],
   "properties": {
     "contract_version": {"const": "rts-interop/v1"},
-    "artifact_type": {
-      "enum": [
-        "UNIT", "RESULT", "EVIDENCE", "GATE_RESULT", "RETRY_REQUEST",
-        "APPROVAL", "TRACE", "LEARNING_CANDIDATE", "PROMOTION_DECISION", "FREEZE_RECORD"
-      ]
-    },
+    "artifact_type": {"enum": ["UNIT", "RESULT", "EVIDENCE", "GATE_RESULT", "RETRY_REQUEST", "APPROVAL", "TRACE", "LEARNING_CANDIDATE", "PROMOTION_DECISION", "FREEZE_RECORD"]},
     "artifact_id": {"type": "string", "minLength": 1},
     "created_at": {"type": "string", "format": "date-time"},
     "producer": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["repository"],
+      "type": "object", "additionalProperties": false, "required": ["repository"],
       "properties": {
         "repository": {"type": "string", "minLength": 1},
         "component": {"type": ["string", "null"]},
@@ -31,238 +21,105 @@
       }
     },
     "subject": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["parent_artifact_ids"],
+      "type": "object", "additionalProperties": false, "required": ["parent_artifact_ids"],
       "properties": {
         "unit_id": {"type": ["string", "null"]},
         "target_artifact_id": {"type": ["string", "null"]},
-        "target_identity": {"$ref": "#/$defs/targetIdentityOrNull"},
-        "parent_artifact_ids": {
-          "type": "array",
-          "items": {"type": "string", "minLength": 1},
-          "uniqueItems": true
-        }
+        "target_identity": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/targetIdentity"}]},
+        "parent_artifact_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
       }
     },
-    "intended_consumers": {
-      "type": "array",
-      "items": {"type": "string", "minLength": 1},
-      "uniqueItems": true
-    },
+    "intended_consumers": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
     "state": {"enum": ["PROPOSED", "READY", "FINAL", "BLOCKED", "UNKNOWN", "CONFLICT"]},
     "verdict": {"enum": ["PASS", "FAIL", "BLOCKED", "UNKNOWN", "CONFLICT", "HUMAN_REQUIRED"]},
-    "disposition": {
-      "enum": ["PROMOTE", "REJECT", "DEFER", "QUARANTINE", "NEEDS_MORE_EVIDENCE", "UNKNOWN", "CONFLICT"]
-    },
-    "evidence_refs": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          {"type": "string", "minLength": 1},
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["kind", "ref"],
-            "properties": {
-              "kind": {"type": "string", "minLength": 1},
-              "ref": {"type": "string", "minLength": 1},
-              "digest": {"type": ["string", "null"]},
-              "identity": {"type": ["object", "null"], "additionalProperties": true}
-            }
-          }
-        ]
-      }
-    },
+    "disposition": {"enum": ["PROMOTE", "REJECT", "DEFER", "QUARANTINE", "NEEDS_MORE_EVIDENCE", "UNKNOWN", "CONFLICT"]},
+    "evidence_refs": {"type": "array", "items": {"oneOf": [
+      {"type": "string", "minLength": 1},
+      {"type": "object", "additionalProperties": true, "required": ["kind", "ref"], "properties": {"kind": {"type": "string", "minLength": 1}, "ref": {"type": "string", "minLength": 1}}}
+    ]}},
     "authority": {
-      "description": "Producer assertion only; never sufficient proof across a repository boundary.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["execution", "external_action", "promotion"],
-      "properties": {
-        "execution": {"type": "boolean"},
-        "external_action": {"type": "boolean"},
-        "promotion": {"type": "boolean"}
-      }
+      "type": "object", "additionalProperties": false, "required": ["execution", "external_action", "promotion"],
+      "properties": {"execution": {"const": false}, "external_action": {"const": false}, "promotion": {"const": false}}
     },
-    "authorization_refs": {
-      "description": "References asserted by the producer. A consumer must resolve/authenticate them before honoring authority.",
-      "type": "array",
-      "items": {"$ref": "#/$defs/authorizationRef"},
-      "uniqueItems": true
-    },
+    "authorization_refs": {"type": "array", "maxItems": 0},
     "payload": {"type": "object", "additionalProperties": true}
   },
   "$defs": {
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "targetIdentity": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["repository", "artifact_id", "sha256"],
+      "type": "object", "additionalProperties": false, "required": ["repository", "artifact_id", "sha256"],
       "properties": {
-        "repository": {"type": "string", "minLength": 1},
-        "artifact_id": {"type": "string", "minLength": 1},
-        "sha256": {"$ref": "#/$defs/sha256"},
-        "commit": {"type": ["string", "null"]}
+        "repository": {"type": "string", "minLength": 1}, "artifact_id": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}, "commit": {"type": ["string", "null"]}
       }
     },
-    "targetIdentityOrNull": {
-      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/targetIdentity"}]
-    },
-    "authorizationRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["kind", "ref", "issuer", "scope", "target_sha256", "issuer_identity"],
-      "properties": {
-        "kind": {"enum": ["POLICY_AUTHORIZATION", "HUMAN_APPROVAL", "PROMOTION_AUTHORIZATION"]},
-        "ref": {"type": "string", "minLength": 1},
-        "issuer": {"type": "string", "minLength": 1},
-        "scope": {
-          "type": "array",
-          "minItems": 1,
-          "items": {"type": "string", "minLength": 1},
-          "uniqueItems": true
-        },
-        "target_sha256": {"$ref": "#/$defs/sha256"},
-        "issuer_identity": {"type": "object", "minProperties": 1, "additionalProperties": true}
-      }
-    },
-    "stringArray": {
-      "type": "array",
-      "items": {"type": "string", "minLength": 1}
-    }
+    "stringArray": {"type": "array", "items": {"type": "string", "minLength": 1}}
   },
   "allOf": [
     {
+      "if": {"properties": {"artifact_type": {"const": "UNIT"}}, "required": ["artifact_type"]},
+      "then": {
+        "required": ["intended_consumers"],
+        "properties": {
+          "intended_consumers": {"minItems": 1},
+          "subject": {"required": ["unit_id", "target_identity"], "properties": {"target_identity": {"$ref": "#/$defs/targetIdentity"}}},
+          "payload": {
+            "required": ["issuance_id", "outcome", "completion_conditions", "scope", "consequence_class", "source_identity", "task", "target_sha256"],
+            "properties": {
+              "issuance_id": {"type": "string", "minLength": 1}, "outcome": {"type": "string", "minLength": 1},
+              "completion_conditions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "scope": {"type": "array", "items": {"type": "string"}}, "consequence_class": {"type": "string", "minLength": 1},
+              "source_identity": {"type": "string", "minLength": 1}, "task": {"type": "object"}, "target_sha256": {"$ref": "#/$defs/sha256"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"artifact_type": {"const": "APPROVAL"}}, "required": ["artifact_type"]},
+      "then": {
+        "properties": {
+          "subject": {"required": ["target_identity"], "properties": {"target_identity": {"$ref": "#/$defs/targetIdentity"}}},
+          "evidence_refs": {"minItems": 1},
+          "payload": {
+            "required": ["decision", "approved_by_asserted", "approval_ref"],
+            "properties": {
+              "decision": {"enum": ["APPROVE", "REJECT"]}, "approved_by_asserted": {"type": "string", "minLength": 1},
+              "approval_ref": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    {
       "if": {"properties": {"artifact_type": {"const": "GATE_RESULT"}}, "required": ["artifact_type"]},
-      "then": {"required": ["verdict"]},
-      "else": {"not": {"required": ["verdict"]}}
+      "then": {"required": ["verdict"]}, "else": {"not": {"required": ["verdict"]}}
     },
     {
       "if": {"properties": {"artifact_type": {"const": "PROMOTION_DECISION"}}, "required": ["artifact_type"]},
       "then": {
         "required": ["disposition"],
         "properties": {
-          "subject": {
-            "required": ["target_identity"],
-            "properties": {"target_identity": {"$ref": "#/$defs/targetIdentity"}}
-          }
+          "subject": {"required": ["target_identity"], "properties": {"target_identity": {"$ref": "#/$defs/targetIdentity"}}},
+          "evidence_refs": {"minItems": 1},
+          "payload": {"required": ["decided_by_asserted", "decision_ref"], "properties": {
+            "decided_by_asserted": {"type": "string", "minLength": 1}, "decision_ref": {"type": "string", "minLength": 1}
+          }}
         }
       },
       "else": {"not": {"required": ["disposition"]}}
     },
     {
-      "if": {"properties": {"artifact_type": {"const": "APPROVAL"}}, "required": ["artifact_type"]},
-      "then": {
-        "properties": {
-          "subject": {
-            "required": ["target_identity"],
-            "properties": {"target_identity": {"$ref": "#/$defs/targetIdentity"}}
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "artifact_type": {
-            "enum": [
-              "RESULT", "EVIDENCE", "GATE_RESULT", "RETRY_REQUEST", "TRACE",
-              "LEARNING_CANDIDATE", "FREEZE_RECORD"
-            ]
-          }
-        },
-        "required": ["artifact_type"]
-      },
-      "then": {
-        "properties": {
-          "authority": {
-            "properties": {
-              "execution": {"const": false},
-              "external_action": {"const": false},
-              "promotion": {"const": false}
-            }
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "anyOf": [
-          {"properties": {"authority": {"properties": {"execution": {"const": true}}, "required": ["execution"]}}},
-          {"properties": {"authority": {"properties": {"external_action": {"const": true}}, "required": ["external_action"]}}},
-          {"properties": {"authority": {"properties": {"promotion": {"const": true}}, "required": ["promotion"]}}}
-        ]
-      },
-      "then": {
-        "required": ["intended_consumers"],
-        "properties": {
-          "authorization_refs": {"minItems": 1},
-          "producer": {
-            "required": ["runtime_identity"],
-            "properties": {"runtime_identity": {"type": "object", "minProperties": 1}}
-          },
-          "subject": {
-            "required": ["target_identity"],
-            "properties": {"target_identity": {"$ref": "#/$defs/targetIdentity"}}
-          },
-          "intended_consumers": {"minItems": 1}
-        }
-      }
-    },
-    {
       "if": {"properties": {"artifact_type": {"const": "LEARNING_CANDIDATE"}}, "required": ["artifact_type"]},
-      "then": {
-        "properties": {
-          "state": {"enum": ["PROPOSED", "READY", "UNKNOWN", "CONFLICT"]},
-          "subject": {"properties": {"parent_artifact_ids": {"minItems": 1}}},
-          "evidence_refs": {"minItems": 1},
-          "payload": {
-            "required": [
-              "claim", "original_outcome", "completion_conditions", "supporting_evidence_refs",
-              "counter_evidence_refs", "applicability", "counterconditions", "unresolved",
-              "defect_history_refs", "source_trace_refs"
-            ],
-            "properties": {
-              "claim": {"type": "string", "minLength": 1},
-              "original_outcome": {"type": "string", "minLength": 1},
-              "completion_conditions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-              "supporting_evidence_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-              "counter_evidence_refs": {"$ref": "#/$defs/stringArray"},
-              "applicability": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-              "counterconditions": {"$ref": "#/$defs/stringArray"},
-              "unresolved": {"$ref": "#/$defs/stringArray"},
-              "defect_history_refs": {"$ref": "#/$defs/stringArray"},
-              "source_trace_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
-            }
-          }
-        }
-      }
+      "then": {"properties": {"state": {"enum": ["PROPOSED", "READY", "UNKNOWN", "CONFLICT"]}, "evidence_refs": {"minItems": 1}, "payload": {
+        "required": ["claim", "original_outcome", "completion_conditions", "supporting_evidence_refs", "counter_evidence_refs", "applicability", "counterconditions", "unresolved", "defect_history_refs", "source_trace_refs"]
+      }}}
     },
     {
       "if": {"properties": {"artifact_type": {"const": "FREEZE_RECORD"}}, "required": ["artifact_type"]},
-      "then": {
-        "properties": {
-          "state": {"const": "FINAL"},
-          "subject": {"properties": {"parent_artifact_ids": {"minItems": 2}}},
-          "evidence_refs": {"minItems": 1},
-          "payload": {
-            "required": [
-              "claim", "promotion_decision_ref", "provenance_refs", "applicability",
-              "counterconditions", "authority_scope", "reassessment_conditions"
-            ],
-            "properties": {
-              "claim": {"type": "string", "minLength": 1},
-              "promotion_decision_ref": {"type": "string", "minLength": 1},
-              "provenance_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-              "applicability": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-              "counterconditions": {"$ref": "#/$defs/stringArray"},
-              "authority_scope": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-              "reassessment_conditions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
-            }
-          }
-        }
-      }
+      "then": {"properties": {"state": {"const": "FINAL"}, "evidence_refs": {"minItems": 1}, "payload": {
+        "required": ["claim", "promotion_decision_ref", "provenance_refs", "applicability", "counterconditions", "authority_scope", "reassessment_conditions"]
+      }}}
     }
   ]
 }
